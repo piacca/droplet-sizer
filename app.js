@@ -77,6 +77,7 @@ function onOpenCvReady() {
     cvReady = true;
     loadingOverlay.classList.add("hidden");
     updateDetectButtonState();
+    updateProcessButtonState();
   };
 }
 window.onOpenCvReady = onOpenCvReady;
@@ -254,12 +255,16 @@ overlayCanvas.addEventListener("mouseup", (e) => {
 });
 
 function drawLine(p1, p2) {
-  ctxOverlay.strokeStyle = "#4f9dff";
-  ctxOverlay.lineWidth = Math.max(2, overlayCanvas.width / 500);
-  ctxOverlay.beginPath();
-  ctxOverlay.moveTo(p1.x, p1.y);
-  ctxOverlay.lineTo(p2.x, p2.y);
-  ctxOverlay.stroke();
+  drawLineOn(ctxOverlay, overlayCanvas, p1, p2);
+}
+
+function drawLineOn(ctx, canvas, p1, p2) {
+  ctx.strokeStyle = "#4f9dff";
+  ctx.lineWidth = Math.max(2, canvas.width / 500);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
 }
 
 function unitToMicrons(value, unit) {
@@ -340,40 +345,14 @@ function runDetection() {
   if (btnDetect.disabled) return;
   mode = "idle";
 
-  const src = cv.imread(imgCanvas);
-  const gray = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, gray, new cv.Size(9, 9), 2, 2);
-
-  // Detection controls are entered in real-world length units (µm);
-  // convert to pixel radii/distance here using the calibrated scale.
-  const detected = new cv.Mat();
-  const minR = Number(minDiameterUm.value) / micronsPerPixel / 2;
-  const maxR = Number(maxDiameterUm.value) / micronsPerPixel / 2;
-  const minDistPx = Number(minDistUm.value) / micronsPerPixel;
-  cv.HoughCircles(
-    gray,
-    detected,
-    cv.HOUGH_GRADIENT,
-    1,             // dp
-    minDistPx,     // minDist between centers
-    Number(param1.value), // Canny high threshold
-    Number(param2.value), // accumulator threshold
-    Math.min(minR, maxR), // minRadius
-    Math.max(minR, maxR)  // maxRadius
-  );
-
-  circles = [];
-  for (let i = 0; i < detected.cols; i++) {
-    const x = detected.data32F[i * 3];
-    const y = detected.data32F[i * 3 + 1];
-    const r = detected.data32F[i * 3 + 2];
-    circles.push({ x, y, r });
-  }
-
-  src.delete();
-  gray.delete();
-  detected.delete();
+  circles = detectCirclesOnCanvas(imgCanvas, {
+    minDiameterUm: Number(minDiameterUm.value),
+    maxDiameterUm: Number(maxDiameterUm.value),
+    minDistUm: Number(minDistUm.value),
+    param1: Number(param1.value),
+    param2: Number(param2.value),
+    micronsPerPixel,
+  });
 
   contactPairs = computeContactPairs();
 
@@ -381,6 +360,101 @@ function runDetection() {
   redrawCircles();
   drawContactPairs();
   renderResults();
+}
+
+// Runs the Hough circle detector on any canvas (the Analyze tab's image
+// canvas, or a video-tab canvas holding one sampled frame) given detection
+// params in real-world units. Returns circles as [{x, y, r}] in that
+// canvas's own pixel coordinates.
+function detectCirclesOnCanvas(canvas, opts) {
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  normalizeGrayInPlace(gray);
+  cv.GaussianBlur(gray, gray, new cv.Size(9, 9), 2, 2);
+
+  const detected = new cv.Mat();
+  const minR = opts.minDiameterUm / opts.micronsPerPixel / 2;
+  const maxR = opts.maxDiameterUm / opts.micronsPerPixel / 2;
+  const minDistPx = opts.minDistUm / opts.micronsPerPixel;
+  cv.HoughCircles(
+    gray,
+    detected,
+    cv.HOUGH_GRADIENT,
+    1,             // dp
+    minDistPx,     // minDist between centers
+    opts.param1,   // Canny high threshold
+    opts.param2,   // accumulator threshold
+    Math.min(minR, maxR), // minRadius
+    Math.max(minR, maxR)  // maxRadius
+  );
+
+  const result = [];
+  for (let i = 0; i < detected.cols; i++) {
+    result.push({
+      x: detected.data32F[i * 3],
+      y: detected.data32F[i * 3 + 1],
+      r: detected.data32F[i * 3 + 2],
+    });
+  }
+
+  src.delete();
+  gray.delete();
+  detected.delete();
+  return suppressDuplicateCircles(result);
+}
+
+// HoughCircles' own minDist parameter is set by the user to allow
+// legitimately close/touching droplets, which also reopens the door for
+// it to report two slightly different circles fit to the same blurry
+// droplet edge as if they were separate droplets. This is a distinct
+// problem from minDist and needs its own pass: near-perfectly-coincident
+// centers (tight relative to droplet size) are almost certainly the same
+// physical droplet fit twice — genuinely distinct droplets, even touching
+// ones, still have centers separated by roughly their combined radii, not
+// a few pixels of Hough fit jitter. Keeps circles in Hough's own return
+// order (roughly strongest accumulator vote first) and drops later
+// near-duplicates of an already-kept circle.
+function suppressDuplicateCircles(circles) {
+  const kept = [];
+  const suppressed = new Array(circles.length).fill(false);
+  for (let i = 0; i < circles.length; i++) {
+    if (suppressed[i]) continue;
+    const c = circles[i];
+    kept.push(c);
+    for (let j = i + 1; j < circles.length; j++) {
+      if (suppressed[j]) continue;
+      const other = circles[j];
+      const dist = Math.hypot(c.x - other.x, c.y - other.y);
+      if (dist < Math.min(c.r, other.r) * 0.6) suppressed[j] = true;
+    }
+  }
+  return kept;
+}
+
+// Stretches a grayscale Mat's pixel values to fill the full 0-255 range
+// in place. Detection otherwise struggles when brightness/contrast varies
+// between images or frames (e.g. alternating illumination sources) — a
+// fixed accumulator threshold on a dim frame just sees weaker edges than
+// the same threshold on a bright one. Plain min/max normalization (not
+// CLAHE) is used deliberately: it needs nothing beyond core Mat access,
+// so it doesn't depend on which optional OpenCV.js modules happen to be
+// compiled into a given build.
+function normalizeGrayInPlace(gray) {
+  const data = gray.data;
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = max - min;
+  if (range < 1) return; // already flat; nothing to stretch
+  const scale = 255 / range;
+  for (let i = 0; i < data.length; i++) {
+    data[i] = Math.round((data[i] - min) * scale);
+  }
 }
 
 // Overlapping-pair contact angle, accounting for focal-plane (height)
@@ -396,17 +470,24 @@ function runDetection() {
 // the supplement of the raw angle between the two center-to-contact-point
 // lines. See README for the full derivation and its limitations.
 function computeContactPairs() {
+  return computeContactPairsFor(circles, micronsPerPixel);
+}
+
+// Parameterized so it can run against either the Analyze tab's live
+// `circles`/`micronsPerPixel`, or a single video frame's own detected
+// circles and scale.
+function computeContactPairsFor(circlesArr, mpp) {
   const pairs = [];
-  for (let i = 0; i < circles.length; i++) {
-    for (let j = i + 1; j < circles.length; j++) {
-      const a = circles[i];
-      const b = circles[j];
+  for (let i = 0; i < circlesArr.length; i++) {
+    for (let j = i + 1; j < circlesArr.length; j++) {
+      const a = circlesArr[i];
+      const b = circlesArr[j];
       const distPx = Math.hypot(b.x - a.x, b.y - a.y);
       if (distPx >= a.r + b.r) continue; // apparent circles don't overlap
 
-      const r1 = a.r * micronsPerPixel;
-      const r2 = b.r * micronsPerPixel;
-      const dxy = distPx * micronsPerPixel; // apparent lateral separation
+      const r1 = a.r * mpp;
+      const r2 = b.r * mpp;
+      const dxy = distPx * mpp; // apparent lateral separation
       const dz = Math.abs(r1 - r2); // inferred height difference
       const D = Math.hypot(dxy, dz); // true 3D center-to-center distance
 
@@ -423,58 +504,66 @@ function computeContactPairs() {
 }
 
 function drawContactPairs() {
-  if (!contactPairs.length) return;
-  const fontSize = Math.max(11, overlayCanvas.width / 85);
-  ctxOverlay.font = `${fontSize}px sans-serif`;
-  ctxOverlay.textAlign = "center";
-  ctxOverlay.textBaseline = "middle";
-  ctxOverlay.lineWidth = Math.max(1.5, overlayCanvas.width / 700);
+  drawContactPairsOn(ctxOverlay, overlayCanvas, circles, contactPairs);
+}
 
-  contactPairs.forEach((pair) => {
-    const a = circles[pair.i];
-    const b = circles[pair.j];
-    ctxOverlay.strokeStyle = pair.inContact3D ? "#4fd18b" : "#9aa3b2";
-    ctxOverlay.setLineDash(pair.inContact3D ? [] : [5, 4]);
-    ctxOverlay.beginPath();
-    ctxOverlay.moveTo(a.x, a.y);
-    ctxOverlay.lineTo(b.x, b.y);
-    ctxOverlay.stroke();
-    ctxOverlay.setLineDash([]);
+function drawContactPairsOn(ctx, canvas, circlesArr, pairs) {
+  if (!pairs.length) return;
+  const fontSize = Math.max(11, canvas.width / 85);
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = Math.max(1.5, canvas.width / 700);
+
+  pairs.forEach((pair) => {
+    const a = circlesArr[pair.i];
+    const b = circlesArr[pair.j];
+    ctx.strokeStyle = pair.inContact3D ? "#4fd18b" : "#9aa3b2";
+    ctx.setLineDash(pair.inContact3D ? [] : [5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     const midX = (a.x + b.x) / 2;
     const midY = (a.y + b.y) / 2;
     const label = pair.inContact3D ? `${pair.angleDeg.toFixed(1)}°` : "n/c";
-    ctxOverlay.lineWidth = Math.max(2, fontSize / 5);
-    ctxOverlay.strokeStyle = "black";
-    ctxOverlay.strokeText(label, midX, midY);
-    ctxOverlay.fillStyle = pair.inContact3D ? "#4fd18b" : "#9aa3b2";
-    ctxOverlay.fillText(label, midX, midY);
-    ctxOverlay.lineWidth = Math.max(1.5, overlayCanvas.width / 700);
+    ctx.lineWidth = Math.max(2, fontSize / 5);
+    ctx.strokeStyle = "black";
+    ctx.strokeText(label, midX, midY);
+    ctx.fillStyle = pair.inContact3D ? "#4fd18b" : "#9aa3b2";
+    ctx.fillText(label, midX, midY);
+    ctx.lineWidth = Math.max(1.5, canvas.width / 700);
   });
 }
 
 function redrawCircles() {
-  const fontSize = Math.max(12, overlayCanvas.width / 70);
-  ctxOverlay.lineWidth = Math.max(2, overlayCanvas.width / 500);
-  ctxOverlay.font = `bold ${fontSize}px sans-serif`;
-  ctxOverlay.textAlign = "center";
-  ctxOverlay.textBaseline = "middle";
+  drawCirclesOn(ctxOverlay, overlayCanvas, circles);
+}
 
-  circles.forEach((c, i) => {
-    ctxOverlay.strokeStyle = "#ff5c5c";
-    ctxOverlay.beginPath();
-    ctxOverlay.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
-    ctxOverlay.stroke();
+function drawCirclesOn(ctx, canvas, circlesArr) {
+  const fontSize = Math.max(12, canvas.width / 70);
+  ctx.lineWidth = Math.max(2, canvas.width / 500);
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  circlesArr.forEach((c, i) => {
+    ctx.strokeStyle = "#ff5c5c";
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
+    ctx.stroke();
 
     // Index label matches the results table row, so a droplet can be
     // found in the image from its row (or vice versa).
     const label = String(i + 1);
-    ctxOverlay.lineWidth = Math.max(2, fontSize / 5);
-    ctxOverlay.strokeStyle = "black";
-    ctxOverlay.strokeText(label, c.x, c.y);
-    ctxOverlay.fillStyle = "#ff5c5c";
-    ctxOverlay.fillText(label, c.x, c.y);
-    ctxOverlay.lineWidth = Math.max(2, overlayCanvas.width / 500);
+    ctx.lineWidth = Math.max(2, fontSize / 5);
+    ctx.strokeStyle = "black";
+    ctx.strokeText(label, c.x, c.y);
+    ctx.fillStyle = "#ff5c5c";
+    ctx.fillText(label, c.x, c.y);
+    ctx.lineWidth = Math.max(2, canvas.width / 500);
   });
 }
 
@@ -653,4 +742,546 @@ btnExportContacts.addEventListener("click", () => {
     );
   });
   downloadCsv("droplet-contact-angles.csv", rows);
+});
+
+/* ==================== Video tab ==================== */
+
+/* ---------- video state ---------- */
+let videoLoaded = false;
+let videoCalibrated = false;
+let videoCalibMode = "draw"; // "draw" | "direct"
+let videoMode = "idle"; // "idle" | "calibrating"
+let videoCalibLine = null;
+let videoMicronsPerPixel = null;
+let videoProcessing = false;
+let videoAbort = false;
+let videoFrameResults = []; // [{timeSec, circles:[{x,y,r,trackId}], contactPairs}]
+
+const CHART_COLORS = ["#4f9dff", "#4fd18b", "#ff9f4f", "#c77dff", "#ff5c5c", "#4fd1c5"];
+
+/* ---------- video elements ---------- */
+const videoDropZone = document.getElementById("videoDropZone");
+const videoFileInput = document.getElementById("videoFileInput");
+const videoStageWrap = document.getElementById("videoStageWrap");
+const videoStageHint = document.getElementById("videoStageHint");
+const videoEl = document.getElementById("videoEl");
+const videoCanvas = document.getElementById("videoCanvas");
+const videoOverlayCanvas = document.getElementById("videoOverlayCanvas");
+const ctxVideoImg = videoCanvas.getContext("2d");
+const ctxVideoOverlay = videoOverlayCanvas.getContext("2d");
+const videoScrubWrap = document.getElementById("videoScrubWrap");
+const videoScrubber = document.getElementById("videoScrubber");
+const videoScrubHint = document.getElementById("videoScrubHint");
+
+const videoCalibModeRadios = document.querySelectorAll('input[name="videoCalibMode"]');
+const videoCalibDrawMode = document.getElementById("videoCalibDrawMode");
+const videoCalibDirectMode = document.getElementById("videoCalibDirectMode");
+const videoBtnDrawScale = document.getElementById("videoBtnDrawScale");
+const videoCalibrateForm = document.getElementById("videoCalibrateForm");
+const videoKnownLength = document.getElementById("videoKnownLength");
+const videoKnownUnit = document.getElementById("videoKnownUnit");
+const videoBtnConfirmScale = document.getElementById("videoBtnConfirmScale");
+const videoDirectScaleValue = document.getElementById("videoDirectScaleValue");
+const videoBtnConfirmDirectScale = document.getElementById("videoBtnConfirmDirectScale");
+const videoScaleResult = document.getElementById("videoScaleResult");
+
+const videoMinDiameterUm = document.getElementById("videoMinDiameterUm");
+const videoMaxDiameterUm = document.getElementById("videoMaxDiameterUm");
+const videoMinDistUm = document.getElementById("videoMinDistUm");
+const videoParam1 = document.getElementById("videoParam1");
+const videoParam2 = document.getElementById("videoParam2");
+const sampleIntervalMs = document.getElementById("sampleIntervalMs");
+const btnProcessVideo = document.getElementById("btnProcessVideo");
+const videoProgressWrap = document.getElementById("videoProgressWrap");
+const videoProgress = document.getElementById("videoProgress");
+const videoProgressLabel = document.getElementById("videoProgressLabel");
+const btnCancelVideo = document.getElementById("btnCancelVideo");
+
+const angleChartCanvas = document.getElementById("angleChartCanvas");
+const angleChartLegend = document.getElementById("angleChartLegend");
+const videoContactTableWrap = document.getElementById("videoContactTableWrap");
+const videoContactTableBody = document.querySelector("#videoContactTable tbody");
+const btnExportVideoCsv = document.getElementById("btnExportVideoCsv");
+
+[
+  [videoParam1, "videoParam1Val", (v) => v],
+  [videoParam2, "videoParam2Val", (v) => v],
+].forEach(([input, labelId, transform]) => {
+  const label = document.getElementById(labelId);
+  const update = () => (label.textContent = transform(Number(input.value)));
+  input.addEventListener("input", update);
+  update();
+});
+
+/* ---------- video loading ---------- */
+videoDropZone.addEventListener("click", () => videoFileInput.click());
+videoDropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  videoDropZone.classList.add("dragover");
+});
+videoDropZone.addEventListener("dragleave", () => videoDropZone.classList.remove("dragover"));
+videoDropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  videoDropZone.classList.remove("dragover");
+  if (e.dataTransfer.files.length) loadVideoFile(e.dataTransfer.files[0]);
+});
+videoFileInput.addEventListener("change", () => {
+  if (videoFileInput.files.length) loadVideoFile(videoFileInput.files[0]);
+});
+
+function loadVideoFile(file) {
+  if (!file.type.startsWith("video/")) return;
+  const url = URL.createObjectURL(file);
+  videoEl.onloadedmetadata = () => {
+    videoCanvas.width = videoEl.videoWidth;
+    videoCanvas.height = videoEl.videoHeight;
+    videoOverlayCanvas.width = videoEl.videoWidth;
+    videoOverlayCanvas.height = videoEl.videoHeight;
+
+    videoStageWrap.classList.remove("hidden");
+    videoDropZone.classList.add("hidden");
+    videoStageHint.textContent = `${videoEl.videoWidth} × ${videoEl.videoHeight} px, ${videoEl.duration.toFixed(2)}s`;
+
+    videoLoaded = true;
+    videoFrameResults = [];
+    videoCalibLine = null;
+    videoCalibrateForm.classList.add("hidden");
+    videoScrubWrap.classList.add("hidden");
+    resetVideoResults();
+
+    // Same reasoning as the Analyze tab: a drawn line is tied to this
+    // video's pixel coordinates, a directly-entered scale isn't.
+    if (videoCalibMode === "draw") {
+      videoCalibrated = false;
+      videoMicronsPerPixel = null;
+      videoScaleResult.classList.add("hidden");
+    } else if (videoCalibrated) {
+      videoScaleResult.textContent = `Scale set: 1 px = ${videoMicronsPerPixel.toFixed(4)} µm`;
+      videoScaleResult.classList.remove("hidden");
+    }
+
+    seekVideoTo(0).then(() => {
+      ctxVideoImg.drawImage(videoEl, 0, 0, videoCanvas.width, videoCanvas.height);
+      ctxVideoOverlay.clearRect(0, 0, videoOverlayCanvas.width, videoOverlayCanvas.height);
+    });
+
+    videoBtnDrawScale.disabled = false;
+    updateProcessButtonState();
+  };
+  videoEl.onerror = () => {
+    videoStageHint.textContent = "Could not load that video file.";
+  };
+  videoEl.src = url;
+}
+
+// Resolves once the video has actually seeked to (approximately) time t and
+// a frame is ready to read via drawImage. Guards against browsers not
+// firing 'seeked' when currentTime is set to (approximately) where it
+// already is.
+function seekVideoTo(t) {
+  const target = Math.min(Math.max(t, 0), Math.max(0, videoEl.duration - 0.001));
+  return new Promise((resolve) => {
+    if (Math.abs(videoEl.currentTime - target) < 0.005) {
+      resolve();
+      return;
+    }
+    const onSeeked = () => {
+      videoEl.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    videoEl.addEventListener("seeked", onSeeked);
+    videoEl.currentTime = target;
+  });
+}
+
+/* ---------- video calibration (mirrors the Analyze tab) ---------- */
+function videoEventToCanvasPoint(evt) {
+  const rect = videoOverlayCanvas.getBoundingClientRect();
+  const scaleX = videoOverlayCanvas.width / rect.width;
+  const scaleY = videoOverlayCanvas.height / rect.height;
+  return {
+    x: (evt.clientX - rect.left) * scaleX,
+    y: (evt.clientY - rect.top) * scaleY,
+  };
+}
+
+videoBtnDrawScale.addEventListener("click", () => {
+  videoMode = "calibrating";
+  videoCalibLine = null;
+  videoCalibrateForm.classList.add("hidden");
+  videoScaleResult.classList.add("hidden");
+  ctxVideoOverlay.clearRect(0, 0, videoOverlayCanvas.width, videoOverlayCanvas.height);
+  videoStageHint.textContent = "Click and drag along a reference length, then release.";
+});
+
+let videoDragging = false;
+let videoDragStart = null;
+
+videoOverlayCanvas.addEventListener("mousedown", (e) => {
+  if (videoMode !== "calibrating") return;
+  videoDragging = true;
+  videoDragStart = videoEventToCanvasPoint(e);
+});
+
+videoOverlayCanvas.addEventListener("mousemove", (e) => {
+  if (videoMode !== "calibrating" || !videoDragging) return;
+  const p = videoEventToCanvasPoint(e);
+  ctxVideoOverlay.clearRect(0, 0, videoOverlayCanvas.width, videoOverlayCanvas.height);
+  drawLineOn(ctxVideoOverlay, videoOverlayCanvas, videoDragStart, p);
+});
+
+videoOverlayCanvas.addEventListener("mouseup", (e) => {
+  if (videoMode !== "calibrating" || !videoDragging) return;
+  videoDragging = false;
+  const p = videoEventToCanvasPoint(e);
+  videoCalibLine = { x1: videoDragStart.x, y1: videoDragStart.y, x2: p.x, y2: p.y };
+  ctxVideoOverlay.clearRect(0, 0, videoOverlayCanvas.width, videoOverlayCanvas.height);
+  drawLineOn(ctxVideoOverlay, videoOverlayCanvas, videoDragStart, p);
+  videoMode = "idle";
+  const pxLen = Math.hypot(videoCalibLine.x2 - videoCalibLine.x1, videoCalibLine.y2 - videoCalibLine.y1);
+  if (pxLen < 2) {
+    videoStageHint.textContent = "Line too short — try drawing the scale line again.";
+    videoCalibLine = null;
+    return;
+  }
+  videoCalibrateForm.classList.remove("hidden");
+  videoStageHint.textContent = `Line drawn: ${pxLen.toFixed(1)} px. Enter its real-world length.`;
+});
+
+function applyVideoCalibration(newMicronsPerPixel, hintText) {
+  videoMicronsPerPixel = newMicronsPerPixel;
+  videoCalibrated = true;
+  videoScaleResult.textContent = `Scale set: 1 px = ${videoMicronsPerPixel.toFixed(4)} µm`;
+  videoScaleResult.classList.remove("hidden");
+  videoCalibrateForm.classList.add("hidden");
+  videoStageHint.textContent = hintText;
+  updateProcessButtonState();
+}
+
+videoBtnConfirmScale.addEventListener("click", () => {
+  if (!videoCalibLine) return;
+  const val = Number(videoKnownLength.value);
+  if (!val || val <= 0) {
+    videoKnownLength.focus();
+    return;
+  }
+  const pxLen = Math.hypot(videoCalibLine.x2 - videoCalibLine.x1, videoCalibLine.y2 - videoCalibLine.y1);
+  const realUm = unitToMicrons(val, videoKnownUnit.value);
+  applyVideoCalibration(realUm / pxLen, "Scale calibrated from this frame.");
+});
+
+videoBtnConfirmDirectScale.addEventListener("click", () => {
+  const val = Number(videoDirectScaleValue.value);
+  if (!val || val <= 0) {
+    videoDirectScaleValue.focus();
+    return;
+  }
+  applyVideoCalibration(val, "Scale set directly.");
+});
+
+videoCalibModeRadios.forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (!radio.checked) return;
+    videoCalibMode = radio.value;
+    videoCalibDrawMode.classList.toggle("hidden", videoCalibMode !== "draw");
+    videoCalibDirectMode.classList.toggle("hidden", videoCalibMode !== "direct");
+  });
+});
+
+/* ---------- cross-frame tracking ---------- */
+// Greedy nearest-neighbor matching, not a globally-optimal assignment
+// (e.g. Hungarian algorithm) — adequate for short clips with well-spaced,
+// slow-moving droplets, but can mis-track under fast motion or droplets
+// crossing paths.
+//
+// Tracks "coast" for a couple of frames when a droplet goes briefly
+// undetected (e.g. one weak-contrast frame under uneven illumination),
+// instead of losing its identity — without this, a single missed frame
+// would make a reappearing droplet look like a brand-new one, silently
+// splitting one continuous droplet's angle-vs-time data into two
+// disconnected series. `activeTracks` is mutated in place and carried
+// across the whole processing run; nextIdRef is a mutable {value}
+// counter so track IDs stay unique.
+const TRACK_COAST_FRAMES = 2;
+
+function updateTracks(newCircles, activeTracks, nextIdRef) {
+  const usedTracks = new Set();
+
+  const result = newCircles.map((c) => {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    activeTracks.forEach((track, idx) => {
+      if (usedTracks.has(idx)) return;
+      const dist = Math.hypot(c.x - track.x, c.y - track.y);
+      const gate = Math.max(c.r, track.r) * 1.5 + 10; // allow for motion + small-radius slack
+      if (dist < gate && dist < bestDist) {
+        bestDist = dist;
+        bestIdx = idx;
+      }
+    });
+    if (bestIdx >= 0) {
+      usedTracks.add(bestIdx);
+      const track = activeTracks[bestIdx];
+      track.x = c.x;
+      track.y = c.y;
+      track.r = c.r;
+      track.framesSinceSeen = 0;
+      return { ...c, trackId: track.trackId };
+    }
+    const trackId = nextIdRef.value++;
+    activeTracks.push({ trackId, x: c.x, y: c.y, r: c.r, framesSinceSeen: 0 });
+    return { ...c, trackId };
+  });
+
+  // Age out tracks not matched this frame; drop ones that have coasted
+  // too long without a real detection. Iterate backward so splicing
+  // doesn't disturb indices already recorded in usedTracks.
+  for (let i = activeTracks.length - 1; i >= 0; i--) {
+    if (usedTracks.has(i)) continue;
+    activeTracks[i].framesSinceSeen++;
+    if (activeTracks[i].framesSinceSeen > TRACK_COAST_FRAMES) {
+      activeTracks.splice(i, 1);
+    }
+  }
+
+  return result;
+}
+
+function pairTrackLabel(frame, pair) {
+  const a = frame.circles[pair.i].trackId;
+  const b = frame.circles[pair.j].trackId;
+  return `${Math.min(a, b)}–${Math.max(a, b)}`;
+}
+function pairTrackKey(frame, pair) {
+  const a = frame.circles[pair.i].trackId;
+  const b = frame.circles[pair.j].trackId;
+  return `${Math.min(a, b)}-${Math.max(a, b)}`;
+}
+
+/* ---------- processing ---------- */
+function updateProcessButtonState() {
+  btnProcessVideo.disabled = !(cvReady && videoLoaded && videoCalibrated) || videoProcessing;
+  btnProcessVideo.title = !cvReady
+    ? "Waiting for OpenCV.js to load…"
+    : !videoLoaded
+    ? "Upload a video first"
+    : !videoCalibrated
+    ? "Calibrate the scale first"
+    : "";
+}
+
+btnProcessVideo.addEventListener("click", () => {
+  if (btnProcessVideo.disabled) return;
+  processVideo();
+});
+
+btnCancelVideo.addEventListener("click", () => {
+  videoAbort = true;
+});
+
+async function processVideo() {
+  videoProcessing = true;
+  videoAbort = false;
+  updateProcessButtonState();
+  videoProgressWrap.classList.remove("hidden");
+  videoScrubWrap.classList.add("hidden");
+  resetVideoResults();
+
+  const interval = Math.max(10, Number(sampleIntervalMs.value)) / 1000; // seconds
+  const duration = videoEl.duration;
+  const timestamps = [];
+  for (let t = 0; t < duration; t += interval) timestamps.push(t);
+  timestamps.push(duration);
+
+  const opts = {
+    minDiameterUm: Number(videoMinDiameterUm.value),
+    maxDiameterUm: Number(videoMaxDiameterUm.value),
+    minDistUm: Number(videoMinDistUm.value),
+    param1: Number(videoParam1.value),
+    param2: Number(videoParam2.value),
+    micronsPerPixel: videoMicronsPerPixel,
+  };
+
+  videoFrameResults = [];
+  const activeTracks = [];
+  const nextIdRef = { value: 1 };
+
+  for (let idx = 0; idx < timestamps.length; idx++) {
+    if (videoAbort) break;
+    const t = timestamps[idx];
+    await seekVideoTo(t);
+    ctxVideoImg.drawImage(videoEl, 0, 0, videoCanvas.width, videoCanvas.height);
+
+    const rawCircles = detectCirclesOnCanvas(videoCanvas, opts);
+    const tracked = updateTracks(rawCircles, activeTracks, nextIdRef);
+    const framePairs = computeContactPairsFor(tracked, videoMicronsPerPixel);
+
+    videoFrameResults.push({ timeSec: t, circles: tracked, contactPairs: framePairs });
+
+    const pct = Math.round(((idx + 1) / timestamps.length) * 100);
+    videoProgress.value = pct;
+    videoProgressLabel.textContent = `${idx + 1} / ${timestamps.length} samples (${pct}%)`;
+
+    // Yield so the progress bar actually repaints between frames instead
+    // of the UI freezing until the whole loop finishes.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  videoProcessing = false;
+  updateProcessButtonState();
+  videoProgressWrap.classList.add("hidden");
+
+  if (videoFrameResults.length) {
+    videoScrubber.max = String(videoFrameResults.length - 1);
+    videoScrubber.value = "0";
+    videoScrubWrap.classList.remove("hidden");
+    showVideoFrame(0);
+    renderAngleChart();
+    renderVideoContactTable();
+  }
+}
+
+/* ---------- scrubber ---------- */
+videoScrubber.addEventListener("input", () => {
+  showVideoFrame(Number(videoScrubber.value));
+});
+
+function showVideoFrame(idx) {
+  const frame = videoFrameResults[idx];
+  if (!frame) return;
+  videoScrubHint.textContent = `Sample ${idx + 1} / ${videoFrameResults.length} — t = ${frame.timeSec.toFixed(2)}s — ${frame.circles.length} droplet(s) detected`;
+  seekVideoTo(frame.timeSec).then(() => {
+    ctxVideoImg.drawImage(videoEl, 0, 0, videoCanvas.width, videoCanvas.height);
+    ctxVideoOverlay.clearRect(0, 0, videoOverlayCanvas.width, videoOverlayCanvas.height);
+    drawCirclesOn(ctxVideoOverlay, videoOverlayCanvas, frame.circles);
+    drawContactPairsOn(ctxVideoOverlay, videoOverlayCanvas, frame.circles, frame.contactPairs);
+  });
+}
+
+/* ---------- results: chart, table, csv ---------- */
+function resetVideoResults() {
+  angleChartCanvas.classList.add("hidden");
+  angleChartLegend.innerHTML = "";
+  videoContactTableWrap.classList.add("hidden");
+  btnExportVideoCsv.classList.add("hidden");
+  videoContactTableBody.innerHTML = "";
+}
+
+function renderAngleChart() {
+  const seriesMap = new Map(); // key -> {label, points:[{t,angle}]}
+  videoFrameResults.forEach((frame) => {
+    frame.contactPairs.forEach((pair) => {
+      if (!pair.inContact3D) return;
+      const key = pairTrackKey(frame, pair);
+      if (!seriesMap.has(key)) seriesMap.set(key, { label: pairTrackLabel(frame, pair), points: [] });
+      seriesMap.get(key).points.push({ t: frame.timeSec, angle: pair.angleDeg });
+    });
+  });
+
+  const series = [...seriesMap.values()];
+  angleChartCanvas.classList.toggle("hidden", series.length === 0);
+  if (!series.length) return;
+  drawAngleChart(series);
+
+  angleChartLegend.innerHTML = series
+    .map(
+      (s, i) =>
+        `<span><span class="swatch" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>Pair ${s.label}</span>`
+    )
+    .join("");
+}
+
+function drawAngleChart(series) {
+  const ctx = angleChartCanvas.getContext("2d");
+  const w = angleChartCanvas.width;
+  const h = angleChartCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const allT = series.flatMap((s) => s.points.map((p) => p.t));
+  const tMax = Math.max(...allT, 0.001);
+  const aMax = 180;
+
+  const padL = 30, padB = 20, padT = 8, padR = 8;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  ctx.strokeStyle = isDark ? "#2a2f3a" : "#dde1e8";
+  ctx.fillStyle = isDark ? "#9aa3b2" : "#5b6472";
+  ctx.font = "10px sans-serif";
+
+  const ySteps = 4;
+  for (let i = 0; i <= ySteps; i++) {
+    const y = padT + plotH - (plotH * i) / ySteps;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(w - padR, y);
+    ctx.stroke();
+    ctx.fillText(Math.round((aMax * i) / ySteps), 2, y + 3);
+  }
+  ctx.fillText("0s", padL, h - 4);
+  ctx.textAlign = "right";
+  ctx.fillText(tMax.toFixed(1) + "s", w - padR, h - 4);
+  ctx.textAlign = "left";
+
+  const xFor = (t) => padL + (t / tMax) * plotW;
+  const yFor = (a) => padT + plotH - (a / aMax) * plotH;
+
+  series.forEach((s, idx) => {
+    const color = CHART_COLORS[idx % CHART_COLORS.length];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    s.points.forEach((p, i) => {
+      const x = xFor(p.t);
+      const y = yFor(p.angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = color;
+    s.points.forEach((p) => {
+      ctx.beginPath();
+      ctx.arc(xFor(p.t), yFor(p.angle), 2.5, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  });
+}
+
+function renderVideoContactTable() {
+  const rows = [];
+  videoFrameResults.forEach((frame) => {
+    frame.contactPairs.forEach((pair) => {
+      const label = pairTrackLabel(frame, pair);
+      const angleCell = pair.inContact3D ? pair.angleDeg.toFixed(1) : "not in contact";
+      rows.push(`<tr><td>${frame.timeSec.toFixed(2)}</td><td>${label}</td><td>${angleCell}</td></tr>`);
+    });
+  });
+  videoContactTableBody.innerHTML = rows.join("");
+  videoContactTableWrap.classList.toggle("hidden", rows.length === 0);
+  btnExportVideoCsv.classList.toggle("hidden", rows.length === 0);
+}
+
+btnExportVideoCsv.addEventListener("click", () => {
+  const rows = [
+    "time_s,pair,diameter_1_um,diameter_2_um,apparent_distance_um,3d_distance_um,in_contact,angle_deg",
+  ];
+  videoFrameResults.forEach((frame) => {
+    frame.contactPairs.forEach((pair) => {
+      const label = pairTrackKey(frame, pair);
+      rows.push(
+        [
+          frame.timeSec.toFixed(3),
+          label,
+          (pair.r1 * 2).toFixed(3),
+          (pair.r2 * 2).toFixed(3),
+          pair.dxy.toFixed(3),
+          pair.D.toFixed(3),
+          pair.inContact3D ? "yes" : "no",
+          pair.inContact3D ? pair.angleDeg.toFixed(2) : "",
+        ].join(",")
+      );
+    });
+  });
+  downloadCsv("droplet-contact-angle-vs-time.csv", rows);
 });

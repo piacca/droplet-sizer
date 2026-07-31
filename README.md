@@ -15,6 +15,21 @@ A browser-based tool for measuring water-in-oil droplet diameters from microscop
 
 Detection uses a [Hough Circle Transform](https://docs.opencv.org/4.x/d3/de5/tutorial_js_houghcircles.html), which works best on droplets that are reasonably circular, in focus, and not too heavily overlapping. If results are off, re-tune the sliders and re-run — no need to re-upload or re-calibrate.
 
+Before detection, each image (and each sampled video frame) has its grayscale contrast automatically stretched to fill the full brightness range. This makes detection far more robust to images/videos with inconsistent brightness — e.g. footage alternating between different illumination sources — without needing separate detection settings per lighting condition.
+
+Detected circles are also passed through a duplicate-suppression pass: lowering "min distance between centers" to catch legitimately close/touching droplets can also let Hough report two slightly different circles fit to the same blurry droplet edge. Near-perfectly-coincident detections (tight relative to droplet size) are merged, while genuinely distinct droplets — even touching or overlapping ones — are left alone, since their centers are still separated by roughly their combined radii, not a few pixels of fit jitter.
+
+## Video tab
+
+Measures contact angle *over time* from a video of droplets interacting, using the same detection/contact-angle machinery as the image tool, applied to a series of sampled frames.
+
+1. **Upload** a video (any format your browser can play).
+2. **Calibrate the scale**, same two options as the image tool, applied to the first frame.
+3. **Detection settings**: same parameters as the image tool, plus a **sample interval** — browsers don't expose a reliable frame-by-frame API for arbitrary video files, so the video is sampled at this time interval via seeking rather than read frame-by-frame. A smaller interval gives more data points but takes longer to process. It's worth tuning detection settings against the first frame's static image feel before processing the whole video.
+4. **Process video**: runs detection on every sampled frame, then matches detected droplets across frames (nearest position/size, gated by a maximum plausible movement per frame) so the same physical droplet keeps the same identity as it moves — a simple greedy nearest-neighbor matcher, not a globally-optimal assignment, so it can mis-track under fast motion or droplets crossing paths. A track tolerates a droplet going undetected for up to 2 consecutive samples (e.g. one weak-contrast frame) without losing its identity, so an isolated missed detection doesn't fragment one droplet's data into two disconnected series.
+5. **Scrub** through processed frames with the slider to see the detected circles and contact-angle line for each sampled instant.
+6. **Results**: an angle-vs-time chart (one line per tracked droplet pair, colored consistently with the legend), a per-sample table, and "Download angle-vs-time CSV".
+
 ## Running locally
 
 This is a static site with no build step. Any local web server works, e.g.:
@@ -31,6 +46,8 @@ Then open `http://localhost:8000`. (Opening `index.html` directly via `file://` 
 - Scale calibration and detection parameters are per-image; batch processing across many images isn't supported yet.
 - Accuracy depends on image quality (focus, contrast, scale bar clarity).
 - TIFF support ([UTIF.js](https://github.com/photopea/UTIF.js)) is decoded entirely client-side. Only the first frame of a multi-page/stack TIFF is used. Common 8-bit and 16-bit grayscale scientific TIFFs are supported, but unusual variants (e.g. some OME-TIFF metadata, float samples) may not decode correctly — if a TIFF fails or looks wrong, try re-exporting as PNG (e.g. in ImageJ/Fiji: File → Save As → PNG) as a fallback.
+- Video sampling is time-based (via seeking), not literal frame-by-frame — the x-axis of the angle-vs-time chart is time, not frame number, and very short/fast events between samples can be missed. Cross-frame droplet tracking is a simple nearest-neighbor matcher (with brief coasting through missed detections) and can mis-track under fast motion or crossing droplets.
+- Detection quality can still vary frame-to-frame with real footage — contrast normalization and track coasting help, but a single fixed detection threshold won't be equally well-tuned for every frame of highly variable footage. The scrubber shows how many droplets were detected in each sampled frame so problem frames are easy to spot.
 
 ## Tips for overlapping droplets
 
