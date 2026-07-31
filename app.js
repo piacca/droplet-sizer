@@ -84,35 +84,78 @@ fileInput.addEventListener("change", () => {
 });
 
 function loadImageFile(file) {
+  const isTiff = /\.tiff?$/i.test(file.name) || file.type === "image/tiff";
+  if (isTiff) {
+    loadTiffFile(file);
+    return;
+  }
   if (!file.type.startsWith("image/")) return;
+
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
-    imgCanvas.width = img.naturalWidth;
-    imgCanvas.height = img.naturalHeight;
-    overlayCanvas.width = img.naturalWidth;
-    overlayCanvas.height = img.naturalHeight;
-    ctxImg.drawImage(img, 0, 0);
-    ctxOverlay.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-    stageWrap.classList.remove("hidden");
-    dropZone.classList.add("hidden");
-    stageHint.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
-
-    imgLoaded = true;
-    calibrated = false;
-    micronsPerPixel = null;
-    circles = [];
-    calibLine = null;
-    scaleResult.classList.add("hidden");
-    calibrateForm.classList.add("hidden");
-    resetResults();
-
-    btnDrawScale.disabled = false;
-    updateDetectButtonState();
+    finalizeNewImage(img.naturalWidth, img.naturalHeight, () => ctxImg.drawImage(img, 0, 0));
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => {
+    stageHint.textContent = "Could not load that image file.";
     URL.revokeObjectURL(url);
   };
   img.src = url;
+}
+
+// Browsers can't decode TIFF natively (no <img>/canvas support), so TIFF
+// files are decoded in JS via UTIF.js and blitted to the canvas as RGBA.
+// Only the first frame of multi-page TIFFs is used.
+function loadTiffFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const buffer = reader.result;
+      const ifds = UTIF.decode(buffer);
+      if (!ifds.length) throw new Error("no image frames found");
+      const ifd = ifds[0];
+      UTIF.decodeImage(buffer, ifd, ifds);
+      const rgba = UTIF.toRGBA8(ifd);
+      const { width, height } = ifd;
+      finalizeNewImage(width, height, () => {
+        ctxImg.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+      });
+    } catch (err) {
+      console.error(err);
+      stageHint.textContent =
+        "Could not decode that TIFF file. If this keeps happening, try converting it to PNG first (e.g. in ImageJ/Fiji: File → Save As → PNG).";
+    }
+  };
+  reader.onerror = () => {
+    stageHint.textContent = "Could not read that file.";
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function finalizeNewImage(width, height, drawFn) {
+  imgCanvas.width = width;
+  imgCanvas.height = height;
+  overlayCanvas.width = width;
+  overlayCanvas.height = height;
+  drawFn();
+  ctxOverlay.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  stageWrap.classList.remove("hidden");
+  dropZone.classList.add("hidden");
+  stageHint.textContent = `${width} × ${height} px`;
+
+  imgLoaded = true;
+  calibrated = false;
+  micronsPerPixel = null;
+  circles = [];
+  calibLine = null;
+  scaleResult.classList.add("hidden");
+  calibrateForm.classList.add("hidden");
+  resetResults();
+
+  btnDrawScale.disabled = false;
+  updateDetectButtonState();
 }
 
 /* ---------- coordinate helpers ---------- */
