@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Droplet Sizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Droplet Sizer</h1>
+    <p class="subtitle">Measure water-in-oil droplet diameters from microscopy images, right in your browser.</p>
+  </header>
+
+  <main>
+    <section class="stage-panel">
+      <div id="dropZone" class="drop-zone">
+        <input type="file" id="fileInput" accept="image/*" hidden />
+        <p><strong>Click to upload</strong> or drag an image here</p>
+        <p class="hint">PNG / JPG microscopy image</p>
+      </div>
+
+      <div id="stageWrap" class="stage-wrap hidden">
+        <div class="stage" id="stage">
+          <canvas id="imgCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
+        <p id="stageHint" class="hint"></p>
+      </div>
+    </section>
+
+    <section class="control-panel">
+
+      <div class="step" id="step-calibrate">
+        <h2>1. Calibrate scale</h2>
+        <p class="hint">Draw a line along a known reference length (e.g. a scale bar), then enter its real-world length.</p>
+        <button id="btnDrawScale" disabled>Draw scale line</button>
+        <div id="calibrateForm" class="hidden">
+          <label>Known length:
+            <input type="number" id="knownLength" min="0" step="any" placeholder="e.g. 100" />
+            <select id="knownUnit">
+              <option value="um">µm</option>
+              <option value="mm">mm</option>
+              <option value="nm">nm</option>
+            </select>
+          </label>
+          <button id="btnConfirmScale">Confirm</button>
+        </div>
+        <p id="scaleResult" class="result-line hidden"></p>
+      </div>
+
+      <div class="step" id="step-detect">
+        <h2>2. Detect droplets</h2>
+        <label>Min diameter (px)
+          <input type="range" id="minRadius" min="1" max="200" value="5" />
+          <span class="val" id="minRadiusVal">10</span>
+        </label>
+        <label>Max diameter (px)
+          <input type="range" id="maxRadius" min="1" max="400" value="60" />
+          <span class="val" id="maxRadiusVal">120</span>
+        </label>
+        <label>Min distance between centers (px)
+          <input type="range" id="minDist" min="1" max="200" value="20" />
+          <span class="val" id="minDistVal">20</span>
+        </label>
+        <label>Edge sensitivity (Canny)
+          <input type="range" id="param1" min="1" max="300" value="100" />
+          <span class="val" id="param1Val">100</span>
+        </label>
+        <label>Detection strictness
+          <input type="range" id="param2" min="1" max="150" value="30" />
+          <span class="val" id="param2Val">30</span>
+        </label>
+        <button id="btnDetect" disabled>Run detection</button>
+        <p class="hint">Tune sliders and re-run until circles match droplets. "Detection strictness" is the main knob: lower finds more (including false positives), higher is more conservative.</p>
+      </div>
+
+      <div class="step" id="step-results">
+        <h2>3. Results</h2>
+        <div id="statsBox" class="stats-box hidden"></div>
+        <canvas id="histCanvas" width="320" height="160" class="hidden"></canvas>
+        <div id="tableWrap" class="table-wrap hidden">
+          <table id="resultsTable">
+            <thead><tr><th>#</th><th>Diameter (px)</th><th>Diameter</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="btnExport" class="hidden">Download CSV</button>
+      </div>
+
+    </section>
+  </main>
+
+  <footer>
+    <p>All processing happens locally in your browser — no images are uploaded anywhere. <a href="https://github.com/piacca/droplet-sizer" id="repoLink" target="_blank" rel="noopener">Source on GitHub</a></p>
+  </footer>
+
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <p>Loading OpenCV.js&hellip;</p>
+  </div>
+
+  <script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="onOpenCvReady()"></script>
+  <script src="app.js"></script>
+</body>
+</html>
