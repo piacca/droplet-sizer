@@ -12,7 +12,13 @@
     <p class="subtitle">Measure water-in-oil droplet diameters from microscopy images, right in your browser.</p>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn active" id="tabBtnAnalyze" data-tab="analyze" role="tab" aria-selected="true">Analyze</button>
+    <button class="tab-btn" id="tabBtnTheory" data-tab="theory" role="tab" aria-selected="false">Contact Angle Theory</button>
+  </nav>
+
   <main>
+  <section id="tabAnalyze" class="tab-panel analyze-grid" role="tabpanel">
     <section class="stage-panel">
       <div id="dropZone" class="drop-zone">
         <input type="file" id="fileInput" accept="image/*,.tif,.tiff" hidden />
@@ -115,6 +121,65 @@
       </div>
 
     </section>
+  </section>
+
+  <section id="tabTheory" class="tab-panel hidden" role="tabpanel">
+    <section class="theory-panel">
+      <h2>How the contact angle is calculated</h2>
+      <p>For two droplets whose outlines overlap in the image, this tool estimates the geometric contact angle between them — correcting for the fact that droplets of different sizes sit at different heights when resting on the same substrate.</p>
+
+      <h3>The setup</h3>
+      <p>Each droplet is treated as an undeformed sphere resting tangent to a shared horizontal substrate (e.g. droplets settled on a glass slide under gravity), imaged from directly above. Because a sphere resting on a plane touches it at exactly one point, a droplet's center sits at height equal to its own radius above that plane:</p>
+      <div class="eq"><span class="eq-var">z</span> = <span class="eq-var">r</span></div>
+      <p>Two droplets of <em>different</em> radii therefore have centers at <em>different heights</em> purely because of their size difference. A single top-down image only shows the lateral (x–y) separation between two droplets, not this height difference — so naively measuring the angle from the 2D image alone would be wrong. The diagram below shows the correction.</p>
+
+      <div class="theory-figure">
+        <svg viewBox="0 0 480 220" role="img" aria-label="Side view of two droplets of different radii resting on a substrate, showing the apparent horizontal distance and the true 3D center-to-center distance">
+          <line x1="20" y1="190" x2="460" y2="190" class="fig-substrate" />
+          <circle cx="140" cy="120" r="70" class="fig-droplet" />
+          <circle cx="330" cy="155" r="35" class="fig-droplet" />
+          <line x1="140" y1="120" x2="140" y2="190" class="fig-dim" />
+          <text x="148" y="160" class="fig-label">r₁</text>
+          <line x1="330" y1="155" x2="330" y2="190" class="fig-dim" />
+          <text x="338" y="178" class="fig-label">r₂</text>
+          <line x1="140" y1="120" x2="330" y2="120" class="fig-dim-dashed" />
+          <text x="220" y="112" class="fig-label">d_xy (apparent, measured)</text>
+          <line x1="330" y1="120" x2="330" y2="155" class="fig-dim-dashed" />
+          <text x="337" y="140" class="fig-label">Δz = |r₁−r₂|</text>
+          <line x1="140" y1="120" x2="330" y2="155" class="fig-hyp" />
+          <text x="205" y="132" class="fig-label fig-label-strong">D (true 3D distance)</text>
+          <circle cx="140" cy="120" r="3" class="fig-center" />
+          <circle cx="330" cy="155" r="3" class="fig-center" />
+          <text x="60" y="205" class="fig-label fig-muted">substrate (glass slide)</text>
+        </svg>
+        <p class="hint">Side view (not to scale). The camera looks straight down, so it directly measures d_xy — the horizontal separation — and each droplet's own radius. The vertical offset Δz follows from the tangent-sphere assumption, giving the true 3D distance D via the Pythagorean relationship.</p>
+      </div>
+
+      <h3>The equations</h3>
+      <p>With apparent (image-plane) radii r₁, r₂ and apparent center-to-center distance d_xy, all already measured in real units via the calibrated scale:</p>
+
+      <div class="eq">Δ<span class="eq-var">z</span> = |<span class="eq-var">r</span><sub>1</sub> − <span class="eq-var">r</span><sub>2</sub>|</div>
+
+      <div class="eq"><span class="eq-var">D</span> = <span class="eq-sqrt"><span class="eq-sqrt-inner"><span class="eq-var">d_xy</span>² + Δ<span class="eq-var">z</span>²</span></span></div>
+
+      <p>A pair only counts as truly touching if the reconstructed spheres actually reach each other:</p>
+      <div class="eq"><span class="eq-var">D</span> ≤ <span class="eq-var">r</span><sub>1</sub> + <span class="eq-var">r</span><sub>2</sub></div>
+      <p>Otherwise the droplets only <em>appear</em> to overlap in the 2D image — an artifact of the height difference — and no angle is reported ("not in contact").</p>
+
+      <p>When they are in contact, the angle follows from the standard two-sphere intersection geometry (law of cosines on the triangle formed by the two centers and their point of contact), with the sign chosen so the angle grows with increasing overlap/adhesion rather than shrinking (0° = a bare graze, matching the conventional direction for a droplet-droplet adhesion angle):</p>
+      <div class="eq">
+        <span class="eq-var">θ</span> = arccos<span class="eq-paren">(</span><span class="eq-frac"><span class="eq-num"><span class="eq-var">D</span>² − <span class="eq-var">r</span><sub>1</sub>² − <span class="eq-var">r</span><sub>2</sub>²</span><span class="eq-den">2<span class="eq-var">r</span><sub>1</sub><span class="eq-var">r</span><sub>2</sub></span></span><span class="eq-paren">)</span>
+      </div>
+
+      <h3>Assumptions and limitations</h3>
+      <ul>
+        <li>Each droplet is assumed to remain a perfect, undeformed sphere — not flattened by gravity or by pressing against its neighbor. Reasonable for small, surface-tension-dominated droplets; less so for larger or heavily-loaded ones.</li>
+        <li>The apparent 2D radius is assumed to equal the true equatorial radius, which holds for a roughly telecentric/low-distortion imaging setup — standard for droplet size measurement, and the same assumption the diameter measurements elsewhere in this tool already rely on.</li>
+        <li>Every droplet in the frame is assumed to rest on the <em>same</em> substrate height.</li>
+        <li>This is a single-image, single-focal-plane model. It has no way to detect real deviations from a sphere. Relaxing that would require z-stack imaging to directly measure each droplet's height rather than inferring it from radius.</li>
+      </ul>
+    </section>
+  </section>
   </main>
 
   <footer>

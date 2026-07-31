@@ -53,6 +53,22 @@ const btnExportContacts = document.getElementById("btnExportContacts");
 
 const loadingOverlay = document.getElementById("loadingOverlay");
 
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    });
+    document.querySelectorAll(".tab-panel").forEach((panel) => {
+      panel.classList.toggle("hidden", panel.id !== `tab${capitalize(btn.dataset.tab)}`);
+    });
+  });
+});
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /* ---------- opencv.js bootstrap ---------- */
 loadingOverlay.classList.remove("hidden");
 

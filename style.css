@@ -39,22 +39,63 @@ h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
 .subtitle { margin: 0; color: var(--muted); }
 
 main {
+  padding: 1.5rem 2rem;
+}
+
+.tab-panel.hidden { display: none !important; }
+
+.analyze-grid {
   display: grid;
   grid-template-columns: 1fr 340px;
   gap: 1.5rem;
-  padding: 1.5rem 2rem;
   align-items: start;
 }
 
 @media (max-width: 900px) {
-  main { grid-template-columns: 1fr; }
+  .analyze-grid { grid-template-columns: 1fr; }
 }
 
-.stage-panel, .control-panel {
+.stage-panel, .control-panel, .theory-panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1.25rem;
+}
+
+.theory-panel {
+  max-width: 760px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+.theory-panel h2 { margin-top: 0; font-size: 1.3rem; }
+.theory-panel h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; }
+.theory-panel p { color: var(--text); }
+.theory-panel ul { padding-left: 1.25rem; }
+.theory-panel li { margin-bottom: 0.5rem; color: var(--text); }
+
+/* ---------- tab nav ---------- */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 2rem;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  padding: 0.75rem 0.25rem;
+  margin: 0 0 -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tab-btn:hover:not(:disabled) { background: none; color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
 }
 
 .drop-zone {
@@ -161,6 +202,58 @@ button:disabled { background: var(--border); color: var(--muted); cursor: not-al
   font-weight: 600;
   margin-top: 0.5rem;
 }
+
+/* ---------- equations ---------- */
+.eq {
+  font-family: "Cambria Math", Cambria, Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  text-align: center;
+  margin: 1.1rem 0;
+}
+.eq-var { font-style: italic; }
+.eq-paren { padding: 0 0.15em; }
+.eq-frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  margin: 0 0.25em;
+}
+.eq-num { border-bottom: 1.5px solid currentColor; padding: 0 0.3em 0.15em; }
+.eq-den { padding: 0.15em 0.3em 0; }
+.eq-sqrt {
+  display: inline-flex;
+  align-items: flex-start;
+  padding-left: 0.6em;
+  position: relative;
+}
+.eq-sqrt::before {
+  content: "√";
+  position: absolute;
+  left: -0.05em;
+  top: -0.1em;
+  font-size: 1.15em;
+}
+.eq-sqrt-inner { border-top: 1.5px solid currentColor; padding: 0 0.15em; }
+
+/* ---------- theory figure ---------- */
+.theory-figure { margin: 1.5rem 0; }
+.theory-figure svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+.fig-substrate { stroke: var(--text); stroke-width: 2; }
+.fig-droplet { fill: none; stroke: var(--accent); stroke-width: 2; }
+.fig-dim { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.fig-dim-dashed { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.fig-hyp { stroke: var(--good); stroke-width: 2; stroke-dasharray: 6 3; }
+.fig-center { fill: var(--text); }
+.fig-label { fill: var(--text); font-size: 12px; font-family: -apple-system, sans-serif; }
+.fig-label-strong { fill: var(--good); font-weight: 600; }
+.fig-muted { fill: var(--muted); font-size: 11px; }
 
 .stats-box {
   display: grid;
