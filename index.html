@@ -33,35 +33,48 @@
 
       <div class="step" id="step-calibrate">
         <h2>1. Calibrate scale</h2>
-        <p class="hint">Draw a line along a known reference length (e.g. a scale bar), then enter its real-world length.</p>
-        <button id="btnDrawScale" disabled>Draw scale line</button>
-        <div id="calibrateForm" class="hidden">
-          <label>Known length:
-            <input type="number" id="knownLength" min="0" step="any" placeholder="e.g. 100" />
-            <select id="knownUnit">
-              <option value="um">µm</option>
-              <option value="mm">mm</option>
-              <option value="nm">nm</option>
-            </select>
-          </label>
-          <button id="btnConfirmScale">Confirm</button>
+        <div class="calib-mode-toggle">
+          <label class="radio-label"><input type="radio" name="calibMode" id="calibModeDraw" value="draw" checked /> Draw scale bar on image</label>
+          <label class="radio-label"><input type="radio" name="calibMode" id="calibModeDirect" value="direct" /> Enter known scale</label>
         </div>
+
+        <div id="calibDrawMode">
+          <p class="hint">Draw a line along a known reference length (e.g. a scale bar), then enter its real-world length.</p>
+          <button id="btnDrawScale" disabled>Draw scale line</button>
+          <div id="calibrateForm" class="hidden">
+            <label>Known length:
+              <input type="number" id="knownLength" min="0" step="any" placeholder="e.g. 100" />
+              <select id="knownUnit">
+                <option value="um">µm</option>
+                <option value="mm">mm</option>
+                <option value="nm">nm</option>
+              </select>
+            </label>
+            <button id="btnConfirmScale">Confirm</button>
+          </div>
+        </div>
+
+        <div id="calibDirectMode" class="hidden">
+          <p class="hint">If you already know your microscope/camera's calibration (e.g. from a calibration slide or objective spec), enter it directly. This stays applied across images you upload afterward.</p>
+          <label>Scale:
+            <input type="number" id="directScaleValue" min="0" step="any" placeholder="e.g. 0.325" /> µm / pixel
+          </label>
+          <button id="btnConfirmDirectScale">Set scale</button>
+        </div>
+
         <p id="scaleResult" class="result-line hidden"></p>
       </div>
 
       <div class="step" id="step-detect">
         <h2>2. Detect droplets</h2>
-        <label>Min diameter (px)
-          <input type="range" id="minRadius" min="1" max="200" value="5" />
-          <span class="val" id="minRadiusVal">10</span>
+        <label>Min diameter (µm)
+          <input type="number" id="minDiameterUm" min="0.01" step="any" value="5" />
         </label>
-        <label>Max diameter (px)
-          <input type="range" id="maxRadius" min="1" max="400" value="60" />
-          <span class="val" id="maxRadiusVal">120</span>
+        <label>Max diameter (µm)
+          <input type="number" id="maxDiameterUm" min="0.01" step="any" value="100" />
         </label>
-        <label>Min distance between centers (px)
-          <input type="range" id="minDist" min="1" max="200" value="20" />
-          <span class="val" id="minDistVal">20</span>
+        <label>Min distance between centers (µm)
+          <input type="number" id="minDistUm" min="0.01" step="any" value="20" />
         </label>
         <label>Edge sensitivity (Canny)
           <input type="range" id="param1" min="1" max="300" value="100" />
@@ -72,7 +85,7 @@
           <span class="val" id="param2Val">30</span>
         </label>
         <button id="btnDetect" disabled>Run detection</button>
-        <p class="hint">Tune sliders and re-run until circles match droplets. "Detection strictness" is the main knob: lower finds more (including false positives), higher is more conservative.</p>
+        <p class="hint">Set the expected diameter/spacing range for your droplets, tune the sliders, and re-run until circles match droplets. "Detection strictness" is the main knob: lower finds more (including false positives), higher is more conservative.</p>
       </div>
 
       <div class="step" id="step-results">
@@ -85,7 +98,20 @@
             <tbody></tbody>
           </table>
         </div>
-        <button id="btnExport" class="hidden">Download CSV</button>
+        <button id="btnExport" class="hidden">Download diameters CSV</button>
+
+        <div id="contactSection" class="hidden">
+          <h3>Contact angles</h3>
+          <p class="hint">For overlapping pairs, assumes each droplet is an undeformed sphere resting tangent to the substrate (so a droplet's center height above the substrate equals its own radius). See README for the full model and its limitations.</p>
+          <div id="contactTableWrap" class="table-wrap hidden">
+            <table id="contactTable">
+              <thead><tr><th>Pair</th><th>Ø1 (µm)</th><th>Ø2 (µm)</th><th>Apparent dist. (µm)</th><th>3D dist. (µm)</th><th>Angle (°)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button id="btnExportContacts" class="hidden">Download contact angles CSV</button>
+          <p class="hint">*"not in contact": the pair's circles overlap in the image, but once the inferred height difference is accounted for, the model implies the droplets aren't actually touching in 3D.</p>
+        </div>
       </div>
 
     </section>

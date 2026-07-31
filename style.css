@@ -101,6 +101,9 @@ main {
 
 .step h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 
+#contactSection { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+#contactSection h3 { font-size: 0.9rem; margin: 0 0 0.35rem; }
+
 label {
   display: block;
   font-size: 0.85rem;
@@ -133,6 +136,25 @@ button:hover:not(:disabled) { background: var(--accent-hover); }
 button:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
 
 #calibrateForm { margin-top: 0.75rem; }
+
+.calib-mode-toggle {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  font-weight: normal;
+  cursor: pointer;
+}
+.radio-label input { margin: 0; }
+
+#calibDirectMode label { display: flex; align-items: center; gap: 0.4rem; }
+#calibDirectMode input[type="number"] { width: 6rem; }
 
 .result-line {
   color: var(--good);
