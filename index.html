@@ -3,13 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Measure water-in-oil droplet diameters and droplet-droplet contact angles from microscopy images and video, entirely in your browser — no uploads, no server." />
+  <meta name="theme-color" content="#2563eb" />
+  <meta property="og:title" content="Droplet Sizer" />
+  <meta property="og:description" content="Measure water-in-oil droplet diameters and contact angles from microscopy images and video, entirely in your browser." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <title>Droplet Sizer</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="shell">
   <header>
-    <h1>Droplet Sizer</h1>
-    <p class="subtitle">Measure water-in-oil droplet diameters from microscopy images, right in your browser.</p>
+    <div class="brand">
+      <img src="favicon.svg" alt="" class="brand-mark" width="30" height="30" />
+      <div>
+        <h1>Droplet Sizer</h1>
+        <p class="subtitle">Measure water-in-oil droplet diameters from microscopy images, right in your browser.</p>
+      </div>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist">
@@ -291,6 +303,7 @@
   <footer>
     <p>All processing happens locally in your browser — no images are uploaded anywhere. <a href="https://github.com/piacca/droplet-sizer" id="repoLink" target="_blank" rel="noopener">Source on GitHub</a></p>
   </footer>
+  </div>
 
   <div id="loadingOverlay" class="loading-overlay hidden">
     <p>Loading OpenCV.js&hellip;</p>

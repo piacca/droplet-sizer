@@ -1,6 +1,22 @@
 # Droplet Sizer
 
-A browser-based tool for measuring water-in-oil droplet diameters from microscopy images. Everything runs client-side (via [OpenCV.js](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)) — no images are uploaded to a server, so it works entirely offline once loaded and can be hosted for free as a static site (e.g. GitHub Pages).
+[![Live demo](https://img.shields.io/badge/demo-live-2563eb)](https://piacca.github.io/droplet-sizer/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![Built with OpenCV.js](https://img.shields.io/badge/built%20with-OpenCV.js-brightgreen)](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)
+
+A browser-based tool for measuring water-in-oil droplet diameters and droplet-droplet contact angles from microscopy images and video. Everything runs client-side (via [OpenCV.js](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)) — no images are uploaded to a server, so it works entirely offline once loaded and can be hosted for free as a static site (e.g. GitHub Pages).
+
+**Try it live: [piacca.github.io/droplet-sizer](https://piacca.github.io/droplet-sizer/)** — no install, no account, just open the link.
+
+## Contents
+
+- [Usage](#usage)
+- [Video tab](#video-tab)
+- [Running locally](#running-locally)
+- [Limitations](#limitations)
+- [Tips for overlapping droplets](#tips-for-overlapping-droplets)
+- [Contact angle model](#contact-angle-model)
+- [License](#license)
 
 ## Usage
 
