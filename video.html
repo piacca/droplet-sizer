@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Measure droplet-droplet contact angle over time from a microscopy video, entirely in your browser — no uploads, no server." />
+  <meta name="theme-color" content="#14448f" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <title>Droplet Analyzer — Video Analysis</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="Droplet Analyzer home">
+        <img src="favicon.svg" alt="" class="brand-mark" width="30" height="30" />
+        <div>
+          <h1>Droplet Analyzer</h1>
+        </div>
+      </a>
+    </div>
+  </header>
+
+  <div class="shell">
+  <nav class="tabs">
+    <a class="tab-btn" href="size.html">Size Determination</a>
+    <a class="tab-btn" href="contact-angle.html">Contact Angle</a>
+    <a class="tab-btn active" href="video.html" aria-current="page">Video</a>
+  </nav>
+
+  <main>
+  <section class="analyze-grid">
+    <section class="stage-panel">
+      <div id="videoDropZone" class="drop-zone">
+        <input type="file" id="videoFileInput" accept="video/*" hidden />
+        <p><strong>Click to upload</strong> or drag a video here</p>
+        <p class="hint">Any format your browser can play (MP4, WebM, MOV, …)</p>
+      </div>
+
+      <div id="videoStageWrap" class="stage-wrap hidden">
+        <div class="stage" id="videoStage">
+          <video id="videoEl" muted playsinline style="display:none"></video>
+          <canvas id="videoCanvas"></canvas>
+          <canvas id="videoOverlayCanvas"></canvas>
+        </div>
+        <p id="videoStageHint" class="hint"></p>
+
+        <div id="videoScrubWrap" class="hidden">
+          <input type="range" id="videoScrubber" min="0" max="0" value="0" step="1" />
+          <p id="videoScrubHint" class="hint"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="control-panel">
+
+      <div class="step" id="video-step-calibrate">
+        <h2>1. Calibrate scale</h2>
+        <p class="hint">Calibrated against the first sampled frame.</p>
+        <div class="calib-mode-toggle">
+          <label class="radio-label"><input type="radio" name="videoCalibMode" id="videoCalibModeDraw" value="draw" checked /> Draw scale bar on frame</label>
+          <label class="radio-label"><input type="radio" name="videoCalibMode" id="videoCalibModeDirect" value="direct" /> Enter known scale</label>
+        </div>
+
+        <div id="videoCalibDrawMode">
+          <button id="videoBtnDrawScale" disabled>Draw scale line</button>
+          <div id="videoCalibrateForm" class="hidden">
+            <label>Known length:
+              <input type="number" id="videoKnownLength" min="0" step="any" placeholder="e.g. 100" />
+              <select id="videoKnownUnit">
+                <option value="um">µm</option>
+                <option value="mm">mm</option>
+                <option value="nm">nm</option>
+              </select>
+            </label>
+            <button id="videoBtnConfirmScale">Confirm</button>
+          </div>
+        </div>
+
+        <div id="videoCalibDirectMode" class="hidden">
+          <label>Scale:
+            <input type="number" id="videoDirectScaleValue" min="0" step="any" placeholder="e.g. 0.325" /> µm / pixel
+          </label>
+          <button id="videoBtnConfirmDirectScale">Set scale</button>
+        </div>
+
+        <p id="videoScaleResult" class="result-line hidden"></p>
+      </div>
+
+      <div class="step" id="video-step-detect">
+        <h2>2. Detection settings</h2>
+        <label>Min diameter (µm)
+          <input type="number" id="videoMinDiameterUm" min="0.01" step="any" value="5" />
+        </label>
+        <label>Max diameter (µm)
+          <input type="number" id="videoMaxDiameterUm" min="0.01" step="any" value="100" />
+        </label>
+        <label>Min distance between centers (µm)
+          <input type="number" id="videoMinDistUm" min="0.01" step="any" value="20" />
+        </label>
+        <label>Edge sensitivity (Canny)
+          <input type="range" id="videoParam1" min="1" max="300" value="100" />
+          <span class="val" id="videoParam1Val">100</span>
+        </label>
+        <label>Detection strictness
+          <input type="range" id="videoParam2" min="1" max="150" value="30" />
+          <span class="val" id="videoParam2Val">30</span>
+        </label>
+        <label>Sample interval (ms)
+          <input type="number" id="sampleIntervalMs" min="10" step="10" value="150" />
+        </label>
+        <p class="hint">Browsers don't expose exact video frame counts, so the video is sampled at this time interval (via seeking) rather than processed frame-by-frame. Smaller interval = more data points but slower processing. Tune detection settings the same way as on the Size Determination page — try it on the first frame before processing the whole video.</p>
+        <button id="btnProcessVideo" disabled>Process video</button>
+        <div id="videoProgressWrap" class="hidden">
+          <progress id="videoProgress" value="0" max="100"></progress>
+          <span id="videoProgressLabel" class="hint"></span>
+          <button id="btnCancelVideo">Cancel</button>
+        </div>
+      </div>
+
+      <div class="step" id="video-step-results">
+        <h2>3. Contact angle vs. time</h2>
+        <canvas id="angleChartCanvas" width="320" height="180" class="hidden"></canvas>
+        <div id="angleChartLegend" class="chart-legend"></div>
+        <div id="videoContactTableWrap" class="table-wrap hidden">
+          <table id="videoContactTable">
+            <thead><tr><th>Time (s)</th><th>Pair</th><th>Angle (°)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="btnExportVideoCsv" class="hidden">Download angle-vs-time CSV</button>
+      </div>
+
+    </section>
+  </section>
+  </main>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <p>Loading OpenCV.js&hellip;</p>
+  </div>
+
+  <script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="onOpenCvReady()"></script>
+  <script src="common.js"></script>
+  <script src="video.js"></script>
+</body>
+</html>

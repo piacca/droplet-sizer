@@ -1,33 +1,46 @@
-# Droplet Sizer
+# Droplet Analyzer
 
 [![Live demo](https://img.shields.io/badge/demo-live-2563eb)](https://piacca.github.io/droplet-sizer/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![Built with OpenCV.js](https://img.shields.io/badge/built%20with-OpenCV.js-brightgreen)](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)
 
-A browser-based tool for measuring water-in-oil droplet diameters and droplet-droplet contact angles from microscopy images and video. Everything runs client-side (via [OpenCV.js](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)) — no images are uploaded to a server, so it works entirely offline once loaded and can be hosted for free as a static site (e.g. GitHub Pages).
+A browser-based tool for measuring droplet diameters and droplet-droplet contact angles from microscopy images and video. Everything runs client-side (via [OpenCV.js](https://docs.opencv.org/4.x/df/d0a/tutorial_js_intro.html)) — no images are uploaded to a server, so it works entirely offline once loaded and can be hosted for free as a static site (e.g. GitHub Pages).
 
 **Try it live: [piacca.github.io/droplet-sizer](https://piacca.github.io/droplet-sizer/)** — no install, no account, just open the link.
 
 ## Contents
 
-- [Usage](#usage)
-- [Video tab](#video-tab)
+- [Pages](#pages)
+- [Size Determination](#size-determination)
+- [Contact Angle Measurement](#contact-angle-measurement)
+- [Video Analysis](#video-analysis)
 - [Running locally](#running-locally)
 - [Limitations](#limitations)
 - [Tips for overlapping droplets](#tips-for-overlapping-droplets)
 - [Contact angle model](#contact-angle-model)
 - [License](#license)
 
-## Usage
+## Pages
 
-1. Open `index.html` (or the hosted URL) in a browser.
+The tool is split into three dedicated pages, linked from the [homepage](https://piacca.github.io/droplet-sizer/) and from the nav bar on every page:
+
+- **`size.html`** — droplet diameter from a still image.
+- **`contact-angle.html`** — droplet-droplet contact angle from a still image.
+- **`video.html`** — contact angle over time from a video.
+
+Size Determination and Contact Angle Measurement both need the same underlying circle detection step (contact angles are derived from which detected circles overlap), so they share identical "calibrate scale" / "detect droplets" controls — each page just surfaces the result that's relevant to it. `index.html` is a landing page linking into these; it isn't the tool itself.
+
+`theory.html` (the detection and contact-angle math behind both measurements) still exists in the repo but is archived for now — not linked from the nav bar or homepage. Open it directly if you need it.
+
+## Size Determination
+
+1. Open `size.html` (or [the hosted page](https://piacca.github.io/droplet-sizer/size.html)).
 2. **Upload** a microscopy image (PNG/JPG/TIFF).
 3. **Calibrate the scale**, either way:
    - **Draw scale bar on image**: drag along a reference of known length (e.g. a scale bar on the image), then enter that real-world length and unit. Tied to this specific image's pixel coordinates, so it needs redoing for each new image.
    - **Enter known scale**: type your microscope/camera's known µm-per-pixel calibration directly (e.g. from a calibration slide or objective spec sheet). Since it doesn't depend on the image, it stays applied across every image you upload afterward — no redoing it each time.
 4. **Tune detection**: set the expected min/max diameter and minimum spacing between droplets in µm (using your calibrated scale), adjust the edge-sensitivity/strictness sliders, and click "Run detection". Detected droplets are outlined in red and numbered on the image, matching the row numbers in the results table.
 5. **Review results**: summary statistics, a diameter histogram, and a per-droplet table appear. Click "Download diameters CSV" to export all measured diameters (in both pixels and µm).
-6. **Contact angles**: for any pair of detected droplets whose circles overlap in the image, a contact angle is computed automatically and shown as a labeled line between them (green = the pair is actually touching in 3D per the model below; grey dashed = it looks like overlap in 2D but isn't real contact once height is accounted for). A table and "Download contact angles CSV" appear below the diameter table. See below for the model this is based on.
 
 Detection uses a [Hough Circle Transform](https://docs.opencv.org/4.x/d3/de5/tutorial_js_houghcircles.html), which works best on droplets that are reasonably circular, in focus, and not too heavily overlapping. If results are off, re-tune the sliders and re-run — no need to re-upload or re-calibrate.
 
@@ -35,13 +48,20 @@ Before detection, each image (and each sampled video frame) has its grayscale co
 
 Detected circles are also passed through a duplicate-suppression pass: lowering "min distance between centers" to catch legitimately close/touching droplets can also let Hough report two slightly different circles fit to the same blurry droplet edge. Near-perfectly-coincident detections (tight relative to droplet size) are merged, while genuinely distinct droplets — even touching or overlapping ones — are left alone, since their centers are still separated by roughly their combined radii, not a few pixels of fit jitter.
 
-## Video tab
+## Contact Angle Measurement
 
-Measures contact angle *over time* from a video of droplets interacting, using the same detection/contact-angle machinery as the image tool, applied to a series of sampled frames.
+1. Open `contact-angle.html` (or [the hosted page](https://piacca.github.io/droplet-sizer/contact-angle.html)).
+2. **Upload and calibrate** exactly as on the Size Determination page — this is a separate upload, not carried over from it.
+3. **Run detection** the same way. For any pair of detected droplets whose circles overlap in the image, a contact angle is computed automatically and shown as a labeled line between them (green = the pair is actually touching in 3D per the model below; grey dashed = it looks like overlap in 2D but isn't real contact once height is accounted for).
+4. **Review results**: a per-pair table appears with diameters, apparent and true 3D distance, and angle. Click "Download contact angles CSV" to export it. See [Contact angle model](#contact-angle-model) below for the model this is based on.
 
-1. **Upload** a video (any format your browser can play).
-2. **Calibrate the scale**, same two options as the image tool, applied to the first frame.
-3. **Detection settings**: same parameters as the image tool, plus a **sample interval** — browsers don't expose a reliable frame-by-frame API for arbitrary video files, so the video is sampled at this time interval via seeking rather than read frame-by-frame. A smaller interval gives more data points but takes longer to process. It's worth tuning detection settings against the first frame's static image feel before processing the whole video.
+## Video Analysis
+
+Measures contact angle *over time* from a video of droplets interacting, using the same detection/contact-angle machinery as the image pages, applied to a series of sampled frames.
+
+1. Open `video.html` and **upload** a video (any format your browser can play).
+2. **Calibrate the scale**, same two options as the image pages, applied to the first frame.
+3. **Detection settings**: same parameters as the image pages, plus a **sample interval** — browsers don't expose a reliable frame-by-frame API for arbitrary video files, so the video is sampled at this time interval via seeking rather than read frame-by-frame. A smaller interval gives more data points but takes longer to process. It's worth tuning detection settings against the first frame's static image feel before processing the whole video.
 4. **Process video**: runs detection on every sampled frame, then matches detected droplets across frames (nearest position/size, gated by a maximum plausible movement per frame) so the same physical droplet keeps the same identity as it moves — a simple greedy nearest-neighbor matcher, not a globally-optimal assignment, so it can mis-track under fast motion or droplets crossing paths. A track tolerates a droplet going undetected for up to 2 consecutive samples (e.g. one weak-contrast frame) without losing its identity, so an isolated missed detection doesn't fragment one droplet's data into two disconnected series.
 5. **Scrub** through processed frames with the slider to see the detected circles and contact-angle line for each sampled instant.
 6. **Results**: an angle-vs-time chart (one line per tracked droplet pair, colored consistently with the legend), a per-sample table, and "Download angle-vs-time CSV".
@@ -54,7 +74,7 @@ This is a static site with no build step. Any local web server works, e.g.:
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`. (Opening `index.html` directly via `file://` can hit browser restrictions on loading OpenCV.js — a local server avoids that.)
+Then open `http://localhost:8000` for the landing page, or go straight to `http://localhost:8000/size.html`, `/contact-angle.html`, or `/video.html`. (Opening the files directly via `file://` can hit browser restrictions on loading OpenCV.js — a local server avoids that.)
 
 ## Limitations
 

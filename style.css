@@ -1,25 +1,14 @@
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --border: #2a2f3a;
-  --text: #e6e8ec;
-  --muted: #9aa3b2;
-  --accent: #4f9dff;
-  --accent-hover: #6fb0ff;
-  --good: #4fd18b;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f5f6f8;
-    --panel: #ffffff;
-    --border: #dde1e8;
-    --text: #1b1f27;
-    --muted: #5b6472;
-    --accent: #2563eb;
-    --accent-hover: #1d4fd1;
-    --good: #16875a;
-  }
+  --bg: #ffffff;
+  --panel: #eef1f6;
+  --border: #c7cedb;
+  --text: #1b1f27;
+  --muted: #4b5563;
+  --accent: #14448f;
+  --accent-hover: #1d56ac;
+  --good: #16875a;
+  --red: #990000;
+  --red-hover: #b30000;
 }
 
 * { box-sizing: border-box; }
@@ -31,30 +20,40 @@ body {
   color: var(--text);
 }
 
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
 .shell {
   max-width: 1400px;
   margin: 0 auto;
 }
 
 header {
-  padding: 1.5rem 2rem 0.5rem;
+  background: linear-gradient(100deg, var(--accent), var(--red) 130%);
+}
+
+.header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.75rem 2rem;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  text-decoration: none;
+  color: inherit;
+  width: fit-content;
 }
-.brand-mark { flex: none; }
+.brand-mark { flex: none; filter: brightness(0) invert(1); }
 
-h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
-.subtitle { margin: 0; color: var(--muted); }
+header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; color: #fff; }
+header .subtitle { margin: 0; color: rgba(255, 255, 255, 0.85); }
 
 main {
   padding: 1.5rem 2rem;
 }
-
-.tab-panel.hidden { display: none !important; }
 
 .analyze-grid {
   display: grid;
@@ -80,11 +79,17 @@ main {
   margin: 0 auto;
   line-height: 1.6;
 }
-.theory-panel h2 { margin-top: 0; font-size: 1.3rem; }
-.theory-panel h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; }
+.theory-panel h2 {
+  margin-top: 0;
+  font-size: 1.3rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--accent);
+}
+.theory-panel h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; color: var(--accent); }
 .theory-panel p { color: var(--text); }
 .theory-panel ul { padding-left: 1.25rem; }
 .theory-panel li { margin-bottom: 0.5rem; color: var(--text); }
+.theory-panel li::marker { color: var(--red); }
 
 /* ---------- tab nav ---------- */
 .tabs {
@@ -103,12 +108,16 @@ main {
   margin: 0 0 -1px;
   border-bottom: 2px solid transparent;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
 }
 .tab-btn:hover:not(:disabled) { background: none; color: var(--text); }
 .tab-btn.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
   font-weight: 600;
+  background: rgba(20, 68, 143, 0.08);
+  border-radius: 6px 6px 0 0;
 }
 
 .drop-zone {
@@ -150,10 +159,15 @@ main {
   border-top: 1px solid var(--border);
   padding-top: 1rem;
   margin-top: 1rem;
+  border-left: 3px solid var(--accent);
+  padding-left: 0.85rem;
 }
 .step:first-child { border-top: none; margin-top: 0; padding-top: 0; }
 
 .step h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+
+#step-results, #video-step-results { border-left-color: var(--red); }
+#step-results h2, #video-step-results h2 { color: var(--red); }
 
 #contactSection { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
 #contactSection h3 { font-size: 0.9rem; margin: 0 0 0.35rem; }
@@ -188,6 +202,14 @@ button {
 }
 button:hover:not(:disabled) { background: var(--accent-hover); }
 button:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+.export-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btn-secondary-action {
+  background: none;
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+.btn-secondary-action:hover:not(:disabled) { border-color: var(--accent); background: none; }
 
 #calibrateForm { margin-top: 0.75rem; }
 
@@ -230,8 +252,8 @@ progress {
   accent-color: var(--accent);
 }
 #videoProgressLabel { white-space: nowrap; }
-#btnCancelVideo { margin: 0; background: var(--border); color: var(--text); }
-#btnCancelVideo:hover:not(:disabled) { background: var(--muted); }
+#btnCancelVideo { margin: 0; background: var(--red); color: #fff; }
+#btnCancelVideo:hover:not(:disabled) { background: var(--red-hover); }
 
 #angleChartCanvas {
   width: 100%;
@@ -347,13 +369,6 @@ thead th {
   border-bottom: 1px solid var(--border);
 }
 tbody tr:nth-child(odd) { background: rgba(127,127,127,0.06); }
-
-footer {
-  padding: 1rem 2rem 2rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-footer a { color: var(--accent); }
 
 .loading-overlay {
   position: fixed;
